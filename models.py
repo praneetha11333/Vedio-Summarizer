@@ -4,6 +4,8 @@ from typing import Optional
 class TimeRange(BaseModel):
     start: str = Field(description="Timestamp in HH:MM:SS or MM:SS format")
     end: str = Field(description="Timestamp in HH:MM:SS or MM:SS format")
+    
+    
 class Chapter(BaseModel):
     title: str = Field(description="Short title for this chapter/section")
     start_time: str = Field(description="When this chapter starts, e.g. '05:30'")
