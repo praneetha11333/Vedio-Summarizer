@@ -6,7 +6,6 @@ Usage:
     python pipeline.py "https://youtube.com/watch?v=VIDEO_ID" --output my_output.json
 """
 import sys
-import json
 import time
 import argparse
 from pathlib import Path
@@ -16,7 +15,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from downloader import download_subtitles
+from downloader import download_subtitles, download_playlist_subtitles
+from md_exporter import summary_to_markdown
 from vtt_parser import parse_vtt, segments_to_transcript
 from llm_processor import (
     extract_topics,
@@ -27,14 +27,24 @@ from llm_processor import (
 
 console = Console()
 
+def _safe_output_dir(output_dir: str) -> Path:
+    """Resolve output_dir and ensure it stays within the current working directory."""
+    base = Path.cwd().resolve()
+    resolved = (base / output_dir).resolve()
+    if not str(resolved).startswith(str(base)):
+        raise ValueError(f"Invalid output directory: {output_dir!r} escapes the working directory.")
+    return resolved
+
+
 def run_pipeline(url: str, output_dir: str = "output") -> dict:
     """Run the full pipeline for a YouTube URL."""
     start_time = time.time()
-    Path(output_dir).mkdir(exist_ok=True)
+    safe_dir = _safe_output_dir(output_dir)
+    safe_dir.mkdir(exist_ok=True)
 
     # ── Step 1: Download subtitles ─────────────────────────────────────────────
     console.rule("[bold blue]Step 1: Downloading subtitles")
-    video_info = download_subtitles(url)
+    video_info = download_subtitles(url, str(safe_dir))
 
     if not video_info.vtt_path:
         console.print("[red]❌ No subtitles found. Cannot proceed.[/red]")
@@ -83,9 +93,9 @@ def run_pipeline(url: str, output_dir: str = "output") -> dict:
     summary = build_final_summary(video_info, segments, topic_result, chapters, qa_pairs)
 
     # Save output
-    output_path = Path(output_dir) / f"{video_info.video_id}_summary.json"
+    output_path = safe_dir / f"{video_info.video_id}.md"
+    output_path.write_text(summary_to_markdown(summary), encoding="utf-8")
     output_dict = summary.model_dump()
-    output_path.write_text(json.dumps(output_dict, indent=2, ensure_ascii=False))
 
     elapsed = time.time() - start_time
     console.rule("[bold green]✅ Pipeline Complete")
@@ -95,19 +105,43 @@ def run_pipeline(url: str, output_dir: str = "output") -> dict:
 
     return output_dict
 
+def is_playlist(url: str) -> bool:
+    return "list=" in url
+
+
+def run_playlist_pipeline(playlist_url: str, output_dir: str = "output") -> list[dict]:
+    """Run the pipeline for every video in a YouTube playlist."""
+    console.print(f"[bold]📋 Detected playlist URL[/bold]")
+    video_infos = download_playlist_subtitles(playlist_url, output_dir)
+    console.print(f"[green]✅ Found {len(video_infos)} videos in playlist[/green]")
+
+    results = []
+    for i, video_info in enumerate(video_infos, 1):
+        console.rule(f"[bold cyan]Video {i}/{len(video_infos)}: {video_info.title}")
+        result = run_pipeline(video_info.url, output_dir)
+        results.append(result)
+
+    console.rule("[bold green]✅ Playlist Complete")
+    console.print(f"Processed {len(results)} videos. Outputs saved to: [bold]{output_dir}/[/bold]")
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="YouTube → Subtitles → Structured JSON Pipeline"
     )
-    parser.add_argument("url", help="YouTube video URL")
+    parser.add_argument("url", help="YouTube video or playlist URL")
     parser.add_argument("--output", default="output", help="Output directory (default: output/)")
     args = parser.parse_args()
 
     console.print(f"\n[bold]🎬 TDS Lab 3.1 — YouTube Pipeline[/bold]")
     console.print(f"URL: {args.url}\n")
 
-    result = run_pipeline(args.url, args.output)
-    console.print(f"\n[dim]JSON keys: {list(result.keys())}[/dim]")
+    if is_playlist(args.url):
+        run_playlist_pipeline(args.url, args.output)
+    else:
+        result = run_pipeline(args.url, args.output)
+        console.print(f"\n[dim]JSON keys: {list(result.keys())}[/dim]")
 
 if __name__ == "__main__":
     main()

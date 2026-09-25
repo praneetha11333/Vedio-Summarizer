@@ -64,3 +64,12 @@ class VideoSummary(BaseModel):
     )
     total_segments: int
     processing_notes: Optional[str] = None 
+
+#Playlist of all the models defined in this file
+class VideoSummaryPlaylist(BaseModel):
+    """A playlist of video summaries."""
+    playlist_url: str
+    videos: list[VideoSummary] = Field(
+        min_length=1,
+        description="List of video summaries in the playlist"
+    )

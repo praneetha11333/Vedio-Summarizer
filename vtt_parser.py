@@ -166,3 +166,23 @@ def chunk_segments(
         chunks.append(current_chunk)
 
     return chunks
+
+# playlist support: download all subtitles for a playlist and parse them
+def download_and_parse_playlist(playlist_url: str, output_dir: str = "output") -> list[list[SubtitleSegment]]:
+    """
+    Download and parse subtitles for all videos in a YouTube playlist.
+    Returns a list of lists of SubtitleSegments (one list per video).
+    """
+    from downloader import download_playlist_subtitles
+
+    video_infos = download_playlist_subtitles(playlist_url, output_dir)
+    all_segments = []
+
+    for video_info in video_infos:
+        if video_info.vtt_path:
+            segments = parse_vtt(video_info.vtt_path)
+            all_segments.append(segments)
+        else:
+            print(f"No subtitles found for {video_info.url}")
+
+    return all_segments

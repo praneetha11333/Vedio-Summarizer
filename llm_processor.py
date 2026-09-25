@@ -6,8 +6,8 @@ import openai
 import instructor
 from pydantic import BaseModel, Field
 from typing import Optional
-from models import Chapter, QAPair, SubtitleSegment, VideoSummary
-from vtt_parser import segments_to_transcript, chunk_segments
+from models import Chapter, QAPair, SubtitleSegment, VideoSummary, VideoSummaryPlaylist
+from vtt_parser import segments_to_transcript, chunk_segments, download_and_parse_playlist
 
 # Use Instructor for structured output
 _openai_client = openai.OpenAI(
@@ -15,7 +15,7 @@ _openai_client = openai.OpenAI(
     base_url="https://aipipe.org/openai/v1",
 )
 open_ai = instructor.from_openai(_openai_client)
-raw_open_ai = _openai_client()
+'''raw_open_ai = _openai_client()'''
 
 # ── Step 1: Extract Topics ─────────────────────────────────────────────────────
 
@@ -83,7 +83,7 @@ def create_chapters(
 
         result = open_ai.messages.create(
             model="o3-mini",
-            max_completion_tokens=1024,
+            max_completion_tokens=2048,
             reasoning_effort="low",
             messages=[{
                 "role": "user",
@@ -158,6 +158,37 @@ Focus on the most educational and practical information."""
         response_model=QAList,
     )
     return result.qa_pairs
+
+# playlist support
+def process_playlist(playlist_url: str, output_dir: str = "output") -> VideoSummaryPlaylist:
+    """
+    Process all videos in a YouTube playlist and create a structured summary.
+    """
+    all_segments = download_and_parse_playlist(playlist_url, output_dir)
+    video_summaries = []
+
+    for segments in all_segments:
+        if not segments:
+            continue  # Skip videos with no subtitles
+        for video_info in segments:
+            topics_result = extract_topics(segments, video_info.title)
+            chapters = create_chapters(segments, video_info.title, topics_result.topics)
+            qa_pairs = extract_qa_pairs(segments, video_info.title, topics_result.topics)
+
+            summary = build_final_summary(
+                video_info=video_info,
+                segments=segments,
+                topic_result=topics_result,
+                chapters=chapters,
+                qa_pairs=qa_pairs,
+            )
+            video_summaries.append(summary)
+        pass
+
+    return VideoSummaryPlaylist(
+        playlist_url=playlist_url,
+        videos=video_summaries
+    )
 
 # ── Step 4: Final Structured Summary ──────────────────────────────────────────
 

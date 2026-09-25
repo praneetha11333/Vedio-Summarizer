@@ -17,6 +17,42 @@ class VideoInfo:
     url: str
     vtt_path: str | None   # path to downloaded VTT file
 
+# Playlist Support:
+def download_playlist_subtitles(playlist_url: str, output_dir: str = "output") -> list[VideoInfo]:
+    """
+    Download auto-generated English subtitles for all videos in a YouTube playlist.
+    Returns a list of VideoInfo objects with paths to the VTT files.
+    """
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    # Step 1: Get playlist metadata (no download)
+    print(f"Fetching playlist info: {playlist_url}")
+    meta_result = subprocess.run(
+        [
+            "yt-dlp",
+            "--dump-json",       # print metadata as JSON
+            "--flat-playlist",   # only get video IDs, no full metadata
+            "--skip-download",
+            playlist_url,
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    if meta_result.returncode != 0:
+        raise RuntimeError(f"yt-dlp playlist metadata failed: {meta_result.stderr}")
+
+    videos = []
+    for line in meta_result.stdout.strip().splitlines():
+        video_meta = json.loads(line)
+        video_id = video_meta["id"]
+        video_url = f"https://www.youtube.com/watch?v={video_id}"
+        video_info = download_subtitles(video_url, output_dir)
+        videos.append(video_info)
+
+    return videos
+
+
 def download_subtitles(url: str, output_dir: str = "output") -> VideoInfo:
     """
     Download auto-generated English subtitles for a YouTube video.
