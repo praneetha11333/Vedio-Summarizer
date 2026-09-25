@@ -1,6 +1,5 @@
 """
 All LLM calls for the YouTube pipeline.
-Uses open_ai open_ai-3-5-haiku-20241022 for cheap steps, open_ai-3-5-sonnet-20241022 for final summary.
 """
 import os
 import openai
